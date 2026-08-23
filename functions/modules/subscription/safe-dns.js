@@ -198,6 +198,11 @@ export const DEFAULT_DNS_CONFIG = {
 };
 
 export function resolveSafeDnsConfig(raw, options = {}) {
+    const override = parseOverride(raw);
+    if (options.preserveOverride && Object.keys(override).length > 0) {
+        return clone(override);
+    }
+
     const policy = resolveDnsPolicy(raw, options);
     const proxyGroup = resolveDnsProxyGroup(raw, options);
     const foreign = policy.mode === DNS_MODES.POLLUTED ? policy.polluted : policy.foreign;
@@ -216,21 +221,21 @@ export function resolveSafeDnsConfig(raw, options = {}) {
         ? foreign.map(value => withProxy(value, proxyGroup))
         : [];
 
-    const override = policyInput(parseOverride(raw));
+    const safeOverride = policyInput(override);
     SAFE_DNS_FIELDS.forEach(key => {
-        if (override[key] === undefined) return;
-        if (key === 'fake-ip-filter-mode' && !['blacklist', 'whitelist', 'rule'].includes(String(override[key]))) return;
+        if (safeOverride[key] === undefined) return;
+        if (key === 'fake-ip-filter-mode' && !['blacklist', 'whitelist', 'rule'].includes(String(safeOverride[key]))) return;
         if (['use-hosts', 'use-system-hosts'].includes(key)) {
-            dns[key] = Boolean(override[key]);
+            dns[key] = Boolean(safeOverride[key]);
             return;
         }
         if (key === 'fake-ip-filter') {
-            if (Array.isArray(override[key]) && override[key].every(item => typeof item === 'string')) {
-                dns[key] = [...override[key]];
+            if (Array.isArray(safeOverride[key]) && safeOverride[key].every(item => typeof item === 'string')) {
+                dns[key] = [...safeOverride[key]];
             }
             return;
         }
-        if (typeof override[key] === 'string' || typeof override[key] === 'number') dns[key] = override[key];
+        if (typeof safeOverride[key] === 'string' || typeof safeOverride[key] === 'number') dns[key] = safeOverride[key];
     });
 
     dns.enable = true;

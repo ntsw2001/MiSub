@@ -102,11 +102,14 @@ function parseAclProxyGroupLine(line) {
     const type = parts[1];
     const members = [];
     const filters = [];
+    const memberOrder = [];
     const options = {};
 
     for (const part of parts.slice(2)) {
         if (part.startsWith('[]')) {
-            members.push(part.slice(2));
+            const member = part.slice(2);
+            members.push(member);
+            memberOrder.push({ type: 'member', value: member });
             continue;
         }
         if (/^https?:\/\//i.test(part)) {
@@ -126,6 +129,7 @@ function parseAclProxyGroupLine(line) {
         if (part === '.*' || (part.startsWith('(') && part.endsWith(')'))) {
             const filterValue = part === '.*' ? '.*' : part.slice(1, -1);
             filters.push(filterValue);
+            memberOrder.push({ type: 'filter', value: filterValue });
             continue;
         }
         if (part === ',') continue;
@@ -135,13 +139,15 @@ function parseAclProxyGroupLine(line) {
             // 如果包含正则特殊字符，视为过滤器
             if (/[*+[\]?|]/.test(part)) {
                 filters.push(part);
+                memberOrder.push({ type: 'filter', value: part });
             } else {
                 members.push(part);
+                memberOrder.push({ type: 'member', value: part });
             }
         }
     }
 
-    return { name, type, members, filters, options };
+    return { name, type, members, filters, memberOrder, options };
 }
 
 export function parseIniTemplate(templateText, options = {}) {

@@ -199,7 +199,8 @@ export function generateBuiltinClashConfig(nodeList, options = {}) {
         // 基础配置：安全默认值，不再依赖 KV 覆盖才能避免 DNS 递归。
         const dnsConfig = resolveSafeDnsConfig(options.customDnsOverride || '', {
             mode: options.dnsMode,
-            proxyGroup: DNS_PROXY_GROUP
+            proxyGroup: DNS_PROXY_GROUP,
+            preserveOverride: true
         });
 
         const config = {

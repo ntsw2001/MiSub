@@ -10,28 +10,44 @@ function resolveGroupFilters(model) {
     const proxyNames = model.proxies.map(p => p.name || p.tag).filter(Boolean);
     if (proxyNames.length === 0) return;
 
+    const matchingProxyNames = filter => {
+        if (filter === '.*') return proxyNames;
+
+        try {
+            const regex = new RegExp(filter, 'i');
+            return proxyNames.filter(name => regex.test(name));
+        } catch (e) {
+            console.warn(`[Template Processor] Invalid regex filter: ${filter}`, e);
+            return [];
+        }
+    };
+
     model.groups.forEach(group => {
         if (!Array.isArray(group.filters) || group.filters.length === 0) return;
+
+        if (Array.isArray(group.memberOrder) && group.memberOrder.length > 0) {
+            const orderedMembers = [];
+            const seenMembers = new Set();
+            group.memberOrder.forEach(entry => {
+                const values = entry.type === 'filter'
+                    ? matchingProxyNames(entry.value)
+                    : [entry.value];
+                values.filter(Boolean).forEach(value => {
+                    if (seenMembers.has(value)) return;
+                    seenMembers.add(value);
+                    orderedMembers.push(value);
+                });
+            });
+            group.members = orderedMembers;
+            group.filters = [];
+            return;
+        }
 
         group.members = group.members || [];
         const currentMembers = new Set(group.members);
 
         group.filters.forEach(filter => {
-            if (filter === '.*') {
-                proxyNames.forEach(name => currentMembers.add(name));
-                return;
-            }
-
-            try {
-                const regex = new RegExp(filter, 'i');
-                proxyNames.forEach(name => {
-                    if (regex.test(name)) {
-                        currentMembers.add(name);
-                    }
-                });
-            } catch (e) {
-                console.warn(`[Template Processor] Invalid regex filter: ${filter}`, e);
-            }
+            matchingProxyNames(filter).forEach(name => currentMembers.add(name));
         });
 
         group.members = Array.from(currentMembers);

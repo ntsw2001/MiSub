@@ -42,14 +42,16 @@ describe('shared split DNS policy', () => {
         expect(dns.fallback).toEqual([]);
     });
 
-    it('never references the auto injected DNS proxy group when a custom override exists', () => {
-        const dns = resolveSafeDnsConfig('dns:\n  nameserver:\n    - 9.9.9.9\n', { proxyGroup: DNS_PROXY_GROUP });
+    it('preserves a custom Clash DNS override without adding schemes or defaults', () => {
+        const dns = resolveSafeDnsConfig('dns:\n  nameserver:\n    - 9.9.9.9\n', {
+            proxyGroup: DNS_PROXY_GROUP,
+            preserveOverride: true
+        });
         const singbox = buildSingboxDnsConfig({ nameserver: ['9.9.9.9'] }, { proxyGroup: DNS_PROXY_GROUP });
 
         const serialized = JSON.stringify(dns);
         expect(serialized).not.toContain(DNS_PROXY_GROUP);
-        expect(dns.nameserver).toEqual(['udp://9.9.9.9:53']);
-        expect(dns['nameserver-policy']['geosite:geolocation-!cn']).toEqual(['udp://9.9.9.9:53']);
+        expect(dns).toEqual({ nameserver: ['9.9.9.9'] });
         expect(singbox.servers.every(server => server.detour !== DNS_PROXY_GROUP)).toBe(true);
     });
 
