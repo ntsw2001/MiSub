@@ -303,12 +303,12 @@ function ensureAiPolicy(model) {
 export function applySmartModelOptimizations(model) {
     const { ruleLevel } = model.meta;
 
-    // 2. 检查等级。如果是 none (完全禁用)，我们只执行占位符展开和清理，不进行智能注入。
+    // 1. 解析等级与用户覆写。等级为 none (完全禁用) 时只执行占位符展开和清理，不进行智能注入。
     const normalizedLevel = (ruleLevel || '').toLowerCase();
     const isCustomTemplate = normalizedLevel === 'none';
     const hasDnsOverride = Boolean(String(model.settings?.customDnsOverride || '').trim());
 
-    // 1. 执行现有的正则过滤器解析 (始终执行)
+    // 2. 执行现有的正则过滤器解析 (始终执行)
     resolveGroupFilters(model);
 
     // DNS 出站不能继承普通主组的 DIRECT 选项，否则 TUN 下会泄露或形成递归。
