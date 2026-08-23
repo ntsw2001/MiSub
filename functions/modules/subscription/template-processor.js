@@ -39,6 +39,7 @@ function resolveGroupFilters(model) {
                 });
             });
             group.members = orderedMembers;
+            group.filters = [];
             return;
         }
 

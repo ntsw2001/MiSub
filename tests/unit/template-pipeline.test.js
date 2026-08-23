@@ -223,6 +223,7 @@ custom_proxy_group=直连优先\`select\`[]DIRECT\`.*
             .toEqual(['东京', '华盛顿', 'DIRECT']);
         expect(parsed['proxy-groups'].find(group => group.name === '直连优先').proxies)
             .toEqual(['DIRECT', '东京', '华盛顿']);
+        expect(parsed['proxy-groups'].every(group => group.filter === undefined)).toBe(true);
     });
 
     it('keeps the default DNS proxy group when no custom DNS override is configured', () => {
