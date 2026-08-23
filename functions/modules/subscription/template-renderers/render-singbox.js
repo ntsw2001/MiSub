@@ -309,7 +309,7 @@ function detectRuleSetFormat(url) {
     return raw.endsWith('.srs') ? 'binary' : 'source';
 }
 
-function buildRuleSets(rules) {
+function buildRuleSets(rules, downloadDetour = DNS_PROXY_GROUP) {
     const remoteRuleSets = rules
         .filter(rule => String(rule.type || '').toLowerCase() === 'rule-set' && rule.source === 'remote')
         .map(rule => ({
@@ -318,7 +318,7 @@ function buildRuleSets(rules) {
             format: detectRuleSetFormat(rule.value),
             url: pinRemoteRuleUrl(rule.value),
             update_interval: '24h',
-            download_detour: DNS_PROXY_GROUP
+            download_detour: downloadDetour
         }));
 
     const implicitRuleSets = [];
@@ -339,7 +339,7 @@ function buildRuleSets(rules) {
                         ? pinRemoteRuleUrl(`https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-${value}.srs`)
                         : pinRemoteRuleUrl(`https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-${value}.srs`),
                     update_interval: '24h',
-                    download_detour: DNS_PROXY_GROUP
+                    download_detour: downloadDetour
                 });
             }
         }
@@ -360,12 +360,16 @@ export function renderSingboxFromTemplateModel(model, options = {}) {
         : urlsToClashProxies(proxyUrls);
     const proxyOutbounds = proxies.map(buildOutbound).filter(Boolean);
     const groupOutbounds = buildGroupOutbounds(normalizedModel.groups.filter(g => Array.isArray(g.members) && g.members.length > 0));
-    const ruleSetObjects = [
-        getSingboxDnsRuleSet(),
-        ...buildRuleSets(normalizedModel.rules).filter(ruleSet => ruleSet.tag !== SINGBOX_CN_RULE_SET)
-    ];
     const routeRules = normalizedModel.rules.map(mapRuleToSingbox).filter(Boolean);
     const defaultOutbound = normalizedModel.groups.find(group => group.name !== DNS_PROXY_GROUP)?.name || 'DIRECT';
+    // DNS 出口组可能因自定义 DNS 覆写而未注入，此时回退到主出站，避免引用不存在的出站。
+    const downloadDetour = normalizedModel.groups.some(group => group.name === DNS_PROXY_GROUP)
+        ? DNS_PROXY_GROUP
+        : defaultOutbound;
+    const ruleSetObjects = [
+        getSingboxDnsRuleSet(),
+        ...buildRuleSets(normalizedModel.rules, downloadDetour).filter(ruleSet => ruleSet.tag !== SINGBOX_CN_RULE_SET)
+    ];
     const dnsConfig = buildSingboxDnsConfig(normalizedModel.settings?.customDnsOverride, {
         mode: normalizedModel.settings?.dnsMode,
         proxyGroup: DNS_PROXY_GROUP

@@ -302,19 +302,27 @@ function ensureAiPolicy(model) {
  */
 export function applySmartModelOptimizations(model) {
     const { ruleLevel } = model.meta;
-    
+
+    // 2. 检查等级。如果是 none (完全禁用)，我们只执行占位符展开和清理，不进行智能注入。
+    const normalizedLevel = (ruleLevel || '').toLowerCase();
+    const isCustomTemplate = normalizedLevel === 'none';
+    const hasDnsOverride = Boolean(String(model.settings?.customDnsOverride || '').trim());
+
     // 1. 执行现有的正则过滤器解析 (始终执行)
     resolveGroupFilters(model);
 
     // DNS 出站不能继承普通主组的 DIRECT 选项，否则 TUN 下会泄露或形成递归。
-    ensureDnsProxyGroup(model);
+    // 自定义 DNS 覆写时不再注入该组，避免生成用户模板中不存在的策略组。
+    if (!hasDnsOverride) {
+        ensureDnsProxyGroup(model);
+    }
 
     // AI 服务分组必须代理优先且 fail-closed；同时补齐主要服务的独立域名规则。
-    ensureAiPolicy(model);
+    // 自定义规则模板 (ruleLevel: none) 严格尊重模板内容，不做任何 AI 注入。
+    if (!isCustomTemplate) {
+        ensureAiPolicy(model);
+    }
 
-    // 2. 检查等级。如果是 none (完全禁用)，我们只执行占位符展开和清理，不进行智能注入。
-    const normalizedLevel = (ruleLevel || '').toLowerCase();
-    
     if (normalizedLevel !== 'none' && normalizedLevel !== 'base' && normalizedLevel) {
         // 3. 准备获取所有节点的名称，用于后续注入
         const proxyNames = model.proxies.map(p => p.name || p.tag).filter(Boolean);
