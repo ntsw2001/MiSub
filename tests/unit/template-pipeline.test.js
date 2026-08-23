@@ -125,6 +125,7 @@ Main = select, HK-01, DIRECT
 [Rule]
 MATCH,Main
         `, {
+            ruleLevel: 'std',
             proxies: [
                 { name: 'HK-01', type: 'trojan', server: '1.1.1.1', port: 443, password: 'pass' }
             ]
@@ -136,6 +137,87 @@ MATCH,Main
         expect(aiGroups.every(group => !group.proxies.includes('DIRECT'))).toBe(true);
         expect(parsed['proxy-groups'].find(group => group.name === 'Main').proxies).toContain('DIRECT');
         expect(parsed.rules).toContain('DOMAIN-SUFFIX,anthropic.com,🤖 Claude');
+    });
+
+    it('never injects AI groups or AI rules for custom rule templates (ruleLevel none)', () => {
+        const rendered = renderClashFromIniTemplate(`
+[Proxy Group]
+Main = select, HK-01, DIRECT
+
+[Rule]
+DOMAIN-SUFFIX,example.com,Main
+MATCH,Main
+        `, {
+            ruleLevel: 'none',
+            proxies: [
+                { name: 'HK-01', type: 'trojan', server: '1.1.1.1', port: 443, password: 'pass' }
+            ]
+        });
+
+        const parsed = yaml.load(rendered);
+        expect(parsed['proxy-groups'].map(group => group.name)).toEqual(['Main', '🌐 DNS 出口']);
+        expect(parsed['proxy-groups'].some(group => String(group.name).startsWith('🤖'))).toBe(false);
+        expect(parsed.rules).toEqual(['DOMAIN-SUFFIX,example.com,Main', 'MATCH,Main']);
+    });
+
+    it('keeps AI groups declared by the custom template itself', () => {
+        const rendered = renderClashFromIniTemplate(`
+[Proxy Group]
+Main = select, HK-01, DIRECT
+🤖 智能 AI = select, HK-01, DIRECT
+
+[Rule]
+DOMAIN-SUFFIX,openai.com,🤖 智能 AI
+MATCH,Main
+        `, {
+            ruleLevel: 'none',
+            proxies: [
+                { name: 'HK-01', type: 'trojan', server: '1.1.1.1', port: 443, password: 'pass' }
+            ]
+        });
+
+        const parsed = yaml.load(rendered);
+        const aiGroup = parsed['proxy-groups'].find(group => group.name === '🤖 智能 AI');
+        expect(aiGroup.proxies).toEqual(['HK-01', 'DIRECT']);
+        expect(parsed['proxy-groups'].filter(group => String(group.name).startsWith('🤖'))).toHaveLength(1);
+        expect(parsed.rules).toEqual(['DOMAIN-SUFFIX,openai.com,🤖 智能 AI', 'MATCH,Main']);
+    });
+
+    it('skips the DNS proxy group when a custom DNS override is configured', () => {
+        const template = `
+[Proxy Group]
+Main = select, HK-01, DIRECT
+
+[Rule]
+MATCH,Main
+        `;
+        const proxies = [{ name: 'HK-01', type: 'trojan', server: '1.1.1.1', port: 443, password: 'pass' }];
+
+        const rendered = renderClashFromIniTemplate(template, {
+            proxies,
+            customDnsOverride: 'dns:\n  nameserver:\n    - 9.9.9.9\n'
+        });
+        const parsed = yaml.load(rendered);
+
+        expect(parsed['proxy-groups'].some(group => group.name === '🌐 DNS 出口')).toBe(false);
+        expect(rendered).not.toContain('🌐 DNS 出口');
+        expect(parsed.dns.nameserver).toEqual(['udp://9.9.9.9:53']);
+    });
+
+    it('keeps the default DNS proxy group when no custom DNS override is configured', () => {
+        const rendered = renderClashFromIniTemplate(`
+[Proxy Group]
+Main = select, HK-01, DIRECT
+
+[Rule]
+MATCH,Main
+        `, {
+            proxies: [{ name: 'HK-01', type: 'trojan', server: '1.1.1.1', port: 443, password: 'pass' }]
+        });
+        const parsed = yaml.load(rendered);
+
+        expect(parsed['proxy-groups'].some(group => group.name === '🌐 DNS 出口')).toBe(true);
+        expect(parsed.dns.nameserver.every(server => server.endsWith('#🌐 DNS 出口'))).toBe(true);
     });
 
     it('should keep Clash template relay-like groups as plain select without dialer-proxy', () => {

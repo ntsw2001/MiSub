@@ -97,6 +97,29 @@ function policyInput(override) {
     return isObject(override.policy) ? { ...override, ...override.policy } : override;
 }
 
+/**
+ * 判断用户是否提供了自定义 DNS 覆写内容
+ * @param {string|Object} raw - 原始覆写片段（YAML/JSON 文本或对象）
+ * @returns {boolean}
+ */
+export function hasCustomDnsOverride(raw) {
+    if (isObject(raw)) return Object.keys(raw).length > 0;
+    if (typeof raw !== 'string' || !raw.trim()) return false;
+    return Object.keys(parseOverride(raw)).length > 0;
+}
+
+/**
+ * 解析 DNS 出口策略组：用户自定义 DNS 覆写时不引用自动注入的策略组，避免悬空引用
+ * @param {string|Object} raw - 原始覆写片段
+ * @param {Object} options - 渲染选项
+ * @returns {string} 策略组名称，空字符串表示不追加策略组
+ */
+function resolveDnsProxyGroup(raw, options = {}) {
+    if (hasCustomDnsOverride(raw)) return '';
+    if (options.proxyGroup === '' || options.proxyGroup === null) return '';
+    return String(options.proxyGroup || DNS_PROXY_GROUP);
+}
+
 export function resolveDnsPolicy(raw, options = {}) {
     const override = parseOverride(raw);
     const input = policyInput(override);
@@ -126,7 +149,7 @@ export function resolveDnsPolicy(raw, options = {}) {
 
 function withProxy(value, proxyGroup) {
     const raw = String(value || '').trim();
-    if (!raw || raw === 'system') return raw;
+    if (!raw || raw === 'system' || !proxyGroup) return raw;
     return `${raw}#${proxyGroup}`;
 }
 
@@ -176,7 +199,7 @@ export const DEFAULT_DNS_CONFIG = {
 
 export function resolveSafeDnsConfig(raw, options = {}) {
     const policy = resolveDnsPolicy(raw, options);
-    const proxyGroup = String(options.proxyGroup || DNS_PROXY_GROUP);
+    const proxyGroup = resolveDnsProxyGroup(raw, options);
     const foreign = policy.mode === DNS_MODES.POLLUTED ? policy.polluted : policy.foreign;
     const dns = clone(DEFAULT_DNS_CONFIG);
 
@@ -224,7 +247,8 @@ function parseSingboxResolver(value, tag, detour) {
     const type = parsed.protocol.slice(0, -1);
     const server = parsed.hostname.replace(/^\[|\]$/g, '');
     const serverPort = Number(parsed.port) || (type === 'https' ? 443 : type === 'tls' ? 853 : 53);
-    const result = { tag, type, server, server_port: serverPort, detour };
+    const result = { tag, type, server, server_port: serverPort };
+    if (detour) result.detour = detour;
     if (type === 'https') result.path = parsed.pathname || '/dns-query';
     if (type === 'tls') result.tls = { enabled: true, server_name: server };
     return result;
@@ -232,7 +256,7 @@ function parseSingboxResolver(value, tag, detour) {
 
 export function buildSingboxDnsConfig(raw, options = {}) {
     const policy = resolveDnsPolicy(raw, options);
-    const proxyGroup = String(options.proxyGroup || DNS_PROXY_GROUP);
+    const proxyGroup = resolveDnsProxyGroup(raw, options);
     const foreign = policy.mode === DNS_MODES.POLLUTED ? policy.polluted : policy.foreign;
     const domesticServers = policy.domestic.map((value, index) => parseSingboxResolver(value, `dns-cn-${index + 1}`, 'DIRECT'));
     const foreignServers = foreign.map((value, index) => parseSingboxResolver(value, `dns-foreign-${index + 1}`, proxyGroup));
