@@ -201,7 +201,28 @@ MATCH,Main
 
         expect(parsed['proxy-groups'].some(group => group.name === '🌐 DNS 出口')).toBe(false);
         expect(rendered).not.toContain('🌐 DNS 出口');
-        expect(parsed.dns.nameserver).toEqual(['udp://9.9.9.9:53']);
+        expect(parsed.dns).toEqual({ nameserver: ['9.9.9.9'] });
+    });
+
+    it('preserves ACL4SSR member and regex filter order', () => {
+        const rendered = renderClashFromIniTemplate(`
+[custom]
+custom_proxy_group=代理优先\`select\`.*\`[]DIRECT
+custom_proxy_group=直连优先\`select\`[]DIRECT\`.*
+        `, {
+            ruleLevel: 'none',
+            customDnsOverride: 'dns:\n  nameserver:\n    - 9.9.9.9\n',
+            proxies: [
+                { name: '东京', type: 'trojan', server: '1.1.1.1', port: 443, password: 'pass' },
+                { name: '华盛顿', type: 'trojan', server: '2.2.2.2', port: 443, password: 'pass' }
+            ]
+        });
+        const parsed = yaml.load(rendered);
+
+        expect(parsed['proxy-groups'].find(group => group.name === '代理优先').proxies)
+            .toEqual(['东京', '华盛顿', 'DIRECT']);
+        expect(parsed['proxy-groups'].find(group => group.name === '直连优先').proxies)
+            .toEqual(['DIRECT', '东京', '华盛顿']);
     });
 
     it('keeps the default DNS proxy group when no custom DNS override is configured', () => {
